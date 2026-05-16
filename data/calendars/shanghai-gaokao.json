@@ -1,0 +1,37 @@
+{
+  "id": "shanghai-gaokao",
+  "title": "上海高考日程 2026",
+  "year": 2026,
+  "region": "CN-SH",
+  "exam_type": "gaokao",
+  "timezone": "Asia/Shanghai",
+  "updated_at": "2026-05-16T17:16:00Z",
+  "source": {
+    "name": "上海市教育考试院",
+    "url": "https://www.shmeea.edu.cn/page/08000/20260316/20110.html"
+  },
+  "default_alarm_minutes": [1440],
+  "events": [
+    {
+      "id": "general-academic-proficiency-graded-exam",
+      "title": "上海普通高中学业水平等级性考试",
+      "start": "2026-05-05",
+      "end": "2026-05-07",
+      "all_day": true,
+      "description": "官方公布日期为 2026-05-05 至 2026-05-06。考试日程或有调整，请以上海市教育考试院最终发布为准。",
+      "url": "https://www.shmeea.edu.cn/page/08000/20260316/20110.html",
+      "status": "confirmed"
+    },
+    {
+      "id": "gaokao-main",
+      "title": "上海普通高校招生全国统一考试",
+      "start": "2026-06-07",
+      "end": "2026-06-10",
+      "all_day": true,
+      "description": "官方公布日期为 2026-06-07 至 2026-06-09。考试日程或有调整，请以上海市教育考试院最终发布为准。",
+      "url": "https://www.shmeea.edu.cn/page/08000/20260316/20110.html",
+      "status": "confirmed",
+      "alarm_minutes": [1440, 60]
+    }
+  ]
+}
