@@ -1,10 +1,15 @@
 use chrono::{DateTime, NaiveDate, NaiveDateTime, Utc};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fs;
 use std::path::PathBuf;
 
-#[derive(Debug, Deserialize)]
+pub mod server;
+pub mod store;
+
+pub type BoxError = Box<dyn Error + Send + Sync>;
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct CalendarFile {
     pub id: String,
     pub title: String,
@@ -12,37 +17,51 @@ pub struct CalendarFile {
     pub region: String,
     pub exam_type: String,
     pub timezone: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
     #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub default_alarm_minutes: Vec<i64>,
     #[serde(default)]
     pub events: Vec<Event>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Source {
     pub name: String,
     pub url: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Event {
     pub id: String,
     pub title: String,
     pub start: String,
     pub end: String,
     #[serde(default)]
+    #[serde(skip_serializing_if = "is_false")]
     pub all_day: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub location: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub source: Option<Source>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<EventStatus>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub alarm_minutes: Option<Vec<i64>>,
 }
 
-#[derive(Debug, Deserialize)]
+fn is_false(value: &bool) -> bool {
+    !*value
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EventStatus {
     Confirmed,
@@ -51,11 +70,34 @@ pub enum EventStatus {
 }
 
 impl EventStatus {
-    fn as_ics(&self) -> &'static str {
+    pub fn as_ics(&self) -> &'static str {
         match self {
             Self::Confirmed => "CONFIRMED",
             Self::Tentative => "TENTATIVE",
             Self::Cancelled => "CANCELLED",
+        }
+    }
+}
+
+impl EventStatus {
+    pub fn as_json_value(&self) -> &'static str {
+        match self {
+            Self::Confirmed => "confirmed",
+            Self::Tentative => "tentative",
+            Self::Cancelled => "cancelled",
+        }
+    }
+}
+
+impl TryFrom<&str> for EventStatus {
+    type Error = String;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        match value {
+            "confirmed" => Ok(Self::Confirmed),
+            "tentative" => Ok(Self::Tentative),
+            "cancelled" => Ok(Self::Cancelled),
+            _ => Err(format!("invalid event status '{value}'")),
         }
     }
 }
@@ -66,7 +108,7 @@ pub struct GenerationOptions {
     pub output_dir: PathBuf,
 }
 
-pub fn generate_all(options: &GenerationOptions) -> Result<Vec<PathBuf>, Box<dyn Error>> {
+pub fn generate_all(options: &GenerationOptions) -> Result<Vec<PathBuf>, BoxError> {
     fs::create_dir_all(&options.output_dir)?;
 
     let mut json_files = Vec::new();
@@ -95,7 +137,7 @@ pub fn generate_all(options: &GenerationOptions) -> Result<Vec<PathBuf>, Box<dyn
     Ok(written)
 }
 
-pub fn render_calendar(calendar: &CalendarFile) -> Result<String, Box<dyn Error>> {
+pub fn render_calendar(calendar: &CalendarFile) -> Result<String, BoxError> {
     validate_calendar(calendar)?;
 
     let mut lines = Vec::new();
@@ -134,7 +176,7 @@ fn render_event(
     event: &Event,
     dtstamp: &str,
     lines: &mut Vec<String>,
-) -> Result<(), Box<dyn Error>> {
+) -> Result<(), BoxError> {
     lines.push("BEGIN:VEVENT".to_string());
     property_raw(
         lines,
@@ -204,7 +246,7 @@ fn render_event(
     Ok(())
 }
 
-fn validate_calendar(calendar: &CalendarFile) -> Result<(), Box<dyn Error>> {
+pub fn validate_calendar(calendar: &CalendarFile) -> Result<(), BoxError> {
     require_token("calendar id", &calendar.id)?;
     if calendar.title.trim().is_empty() {
         return Err("calendar title is required".into());
@@ -236,7 +278,7 @@ fn validate_calendar(calendar: &CalendarFile) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn validate_event(calendar: &CalendarFile, event: &Event) -> Result<(), Box<dyn Error>> {
+fn validate_event(calendar: &CalendarFile, event: &Event) -> Result<(), BoxError> {
     require_token("event id", &event.id)?;
     if event.title.trim().is_empty() {
         return Err(format!("event {} title is required", event.id).into());
@@ -267,7 +309,7 @@ fn validate_event(calendar: &CalendarFile, event: &Event) -> Result<(), Box<dyn 
     Ok(())
 }
 
-fn require_token(label: &str, value: &str) -> Result<(), Box<dyn Error>> {
+fn require_token(label: &str, value: &str) -> Result<(), BoxError> {
     if value.trim().is_empty() {
         return Err(format!("{label} is required").into());
     }
@@ -282,30 +324,30 @@ fn require_token(label: &str, value: &str) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn validate_alarm(minutes: i64) -> Result<(), Box<dyn Error>> {
+fn validate_alarm(minutes: i64) -> Result<(), BoxError> {
     if minutes <= 0 {
         return Err("alarm minutes must be positive".into());
     }
     Ok(())
 }
 
-fn parse_date(value: &str) -> Result<NaiveDate, Box<dyn Error>> {
+fn parse_date(value: &str) -> Result<NaiveDate, BoxError> {
     NaiveDate::parse_from_str(value, "%Y-%m-%d")
         .map_err(|_| format!("invalid date '{value}', expected YYYY-MM-DD").into())
 }
 
-fn parse_datetime(value: &str) -> Result<NaiveDateTime, Box<dyn Error>> {
+fn parse_datetime(value: &str) -> Result<NaiveDateTime, BoxError> {
     NaiveDateTime::parse_from_str(value, "%Y-%m-%dT%H:%M:%S")
         .map_err(|_| format!("invalid datetime '{value}', expected YYYY-MM-DDTHH:MM:SS").into())
 }
 
-fn parse_rfc3339(value: &str) -> Result<DateTime<Utc>, Box<dyn Error>> {
+fn parse_rfc3339(value: &str) -> Result<DateTime<Utc>, BoxError> {
     DateTime::parse_from_rfc3339(value)
         .map(|dt| dt.with_timezone(&Utc))
         .map_err(|_| format!("invalid updated_at '{value}', expected RFC3339").into())
 }
 
-fn calendar_dtstamp(calendar: &CalendarFile) -> Result<String, Box<dyn Error>> {
+fn calendar_dtstamp(calendar: &CalendarFile) -> Result<String, BoxError> {
     let Some(updated_at) = &calendar.updated_at else {
         return Ok("19700101T000000Z".to_string());
     };

@@ -25,6 +25,12 @@ desktop.ini
 tmp/
 temp/
 
+# Local editor database. JSON and ICS are the reviewable outputs.
+/work/
+*.sqlite
+*.sqlite3
+*.db
+
 # Test coverage and profiling output.
 coverage/
 tarpaulin-report.html
